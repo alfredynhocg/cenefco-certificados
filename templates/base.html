@@ -42,7 +42,10 @@
                     <a href="{% url 'dashboard' %}" class="px-3 py-2 rounded-md hover:bg-brand-500 transition">Mis lotes</a>
                     {% if user.es_admin %}<a href="{% url 'lista_usuarios' %}" class="px-3 py-2 rounded-md hover:bg-brand-500 transition">Usuarios</a>{% endif %}
                     <span class="px-3 py-2 text-brand-100 hidden sm:inline">{{ user.username }}</span>
-                    <a href="{% url 'logout' %}" class="px-3 py-2 rounded-md bg-brand-700 hover:bg-brand-500 transition">Salir</a>
+                    <form method="post" action="{% url 'logout' %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="px-3 py-2 rounded-md bg-brand-700 hover:bg-brand-500 transition">Salir</button>
+                    </form>
                 {% else %}
                     <a href="{% url 'login' %}" class="px-3 py-2 rounded-md bg-brand-700 hover:bg-brand-500 transition">Ingresar</a>
                 {% endif %}

@@ -1,141 +1,139 @@
 # Despliegue en VPS (Ubuntu 24.04, sin Docker)
 
-Guia paso a paso para instalar el proyecto de certificados en el VPS
-(`vmi3392869`), sin contenedores, usando los servicios nativos de Ubuntu:
-PostgreSQL, Nginx y systemd (gunicorn como servidor WSGI).
+Guia paso a paso -- ya ejecutada una vez en el VPS `vmi3392869` -- para
+instalar el proyecto de certificados sin contenedores, usando los
+servicios nativos de Ubuntu: PostgreSQL, Nginx y systemd (gunicorn como
+servidor WSGI).
 
 El VPS ya corre Moodle y Nginx Proxy Manager (NPM) en Docker, ocupando los
 puertos 80, 81, 443 y 8080. Este proyecto corre **aparte, sin Docker**, en
 el puerto 8001, sin tocar nada de lo existente.
 
+> **Importante sobre la ruta de instalacion:** el proyecto NO debe vivir
+> dentro de `/root/`. Nginx corre como usuario `www-data`, y `/root` tiene
+> permisos `drwx------` (solo el propio root puede atravesarlo), asi que
+> `www-data` no puede servir nada de `/media/` o `/static/` si el proyecto
+> esta ahi -- da `403 Forbidden`. Por eso el proyecto final vive en
+> `/srv/cenefco-certificados`, que es la ruta estandar de Linux para datos
+> servidos por la maquina.
+
 ## Estructura final en el VPS
 
 ```
-/root/certificados/
-└── app/                    <- codigo del proyecto Django
-    ├── venv/                <- entorno virtual Python
-    ├── manage.py
-    ├── config/
-    ├── accounts/
-    ├── certificados/
-    ├── templates/
-    ├── media/               <- excels, plantillas, PDFs generados
-    ├── .env                 <- configuracion real (no se versiona)
-    └── scripts/
+/srv/cenefco-certificados/
+├── venv/                <- entorno virtual Python (creado en el VPS, no se copia)
+├── manage.py
+├── config/
+├── accounts/
+├── certificados/
+├── templates/
+├── scripts/
+├── media/               <- excels, plantillas, PDFs generados (no versionado)
+├── staticfiles/         <- generado por collectstatic (no versionado)
+└── .env                 <- configuracion real (no versionado)
 ```
 
-Servicios que se crean:
+Servicios:
 - `postgresql` (apt) -- base de datos `certificados_cenefco`
-- `certificados-gunicorn.service` (systemd) -- corre la app Django
-- `nginx` (apt, nativo) -- proxy en el puerto 8001 hacia gunicorn
+- `certificados-gunicorn.service` (systemd) -- corre la app Django en `127.0.0.1:8002`
+- `nginx` (apt, nativo, **distinto del nginx de NPM en Docker**) -- proxy publico en el puerto 8001
 - cron diario -- limpieza de certificados vencidos (>30 dias)
 
 ---
 
-## Paso 0 -- Resumen de lo ya confirmado en el VPS
+## Paso 0 -- Resumen del entorno
 
-| Item | Estado |
+| Item | Valor |
 |---|---|
 | Sistema | Ubuntu 24.04 (noble) |
 | Python | 3.12.3 nativo (`/usr/bin/python3.12`) |
-| PostgreSQL | No instalado (se instala nativo via apt) |
-| Nginx | No instalado nativo (se instala via apt, puerto 8001 propio) |
-| Docker | Solo para Moodle + NPM, no se toca |
-| Puertos libres | 8001 (elegido para este proyecto) |
-| RAM / Disco | 11GB RAM, 185GB libres -- sobra espacio |
+| IP publica del VPS | `161.97.181.140` |
+| Puerto de acceso (sin dominio aun) | `8001` |
+| Repositorio | `git@github.com:alfredynhocg/cenefco-certificados.git` |
+| Docker existente | Moodle (`:8080`) + NPM (`:80`/`:81`/`:443`) -- no se toca |
 
 ---
 
-## Paso 1 -- Instalar dependencias del sistema
+## Paso 1 -- Dependencias del sistema
 
 ```bash
 apt update && apt install -y python3.12-venv python3-pip postgresql postgresql-contrib nginx git
 ```
 
-Verificar que los servicios quedaron activos:
+**Gotcha encontrado:** Nginx nativo no arranca de entrada porque su sitio
+`default` intenta usar el puerto 80, que ya esta ocupado por NPM (Docker).
+Hay que desactivarlo (este proyecto nunca necesita el puerto 80):
 
 ```bash
-systemctl status postgresql --no-pager | head -5
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl restart nginx
 systemctl status nginx --no-pager | head -5
 ```
 
 ---
 
-## Paso 2 -- Crear la base de datos PostgreSQL
+## Paso 2 -- Base de datos PostgreSQL
 
 ```bash
-sudo -u postgres psql
-```
-
-Dentro del prompt de `psql`:
-
-```sql
-CREATE DATABASE certificados_cenefco;
-ALTER USER postgres PASSWORD '5dv4rrgq8au7';
-\q
-```
-
-> Nota: se reutiliza la misma base/credenciales que en el entorno local
-> para simplificar. Si prefieres una contraseña distinta en el VPS,
-> usa esa y ajusta el `.env` del Paso 5 acorde.
-
-Verificar conexion:
-
-```bash
+sudo -u postgres psql -c "CREATE DATABASE certificados_cenefco;"
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD '5dv4rrgq8au7';"
 psql -h 127.0.0.1 -U postgres -d certificados_cenefco -c "SELECT 1;"
 ```
 
 ---
 
-## Paso 3 -- Subir el codigo del proyecto
+## Paso 3 -- Clonar el proyecto
 
-Opcion recomendada: copiar el proyecto local al VPS via `scp` (no hay
-repositorio Git todavia). Desde la maquina local (Windows, en Git Bash):
-
-```bash
-mkdir -p /root/certificados   # en el VPS, antes de copiar
-scp -r "c:\Users\maxcell\projects\cenefco\certicados-web" root@TU_IP_VPS:/root/certificados/app
-```
-
-Esto copia todo, incluyendo `venv/` y `db.sqlite3` de Windows, que **no
-sirven en Linux** y se deben descartar. En el VPS, despues de copiar:
+El codigo se versiona en GitHub. En el VPS:
 
 ```bash
-cd /root/certificados/app
-rm -rf venv db.sqlite3 server.log __pycache__
-find . -name "__pycache__" -type d -exec rm -rf {} +
+mkdir -p /srv
+cd /srv
+git clone git@github.com:alfredynhocg/cenefco-certificados.git
+mv cenefco-certificados/* cenefco-certificados/.git cenefco-certificados/.gitignore /srv/cenefco-certificados 2>/dev/null || true
 ```
 
-> Alternativa mas prolija a futuro: subir el proyecto a un repositorio Git
-> (privado) y hacer `git clone` en el VPS en vez de `scp`. Mas facil de
-> actualizar despues con `git pull`.
+> Si clonas directo en `/srv/cenefco-certificados` desde el inicio
+> (`git clone <repo> /srv/cenefco-certificados`) te ahorras el paso de
+> mover -- es lo recomendado para una instalacion nueva.
+
+El `.gitignore` del repo ya excluye `venv/`, `media/`, `.env`,
+`staticfiles/` y `db.sqlite3` -- esos se generan/configuran en el propio
+VPS, nunca se traen del repositorio.
 
 ---
 
 ## Paso 4 -- Entorno virtual y dependencias Python
 
 ```bash
-cd /root/certificados/app
+cd /srv/cenefco-certificados
 python3.12 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install django gunicorn psycopg2-binary python-decouple pillow reportlab openpyxl pymupdf
 ```
 
+> Si en algun momento se mueve la carpeta del proyecto a otra ruta, el
+> `venv` debe **recrearse**, no copiarse -- los scripts dentro de
+> `venv/bin/` (como `gunicorn`) tienen la ruta absoluta vieja grabada en
+> el shebang (`#!/ruta/vieja/venv/bin/python3.12`) y fallan con
+> `status=203/EXEC` en systemd si no se regeneran.
+
 ---
 
-## Paso 5 -- Configurar `.env` de produccion
+## Paso 5 -- Archivo `.env` de produccion
 
 ```bash
-nano /root/certificados/app/.env
+nano /srv/cenefco-certificados/.env
 ```
 
-Contenido:
+Contenido (generar una `SECRET_KEY` propia, ver mas abajo):
 
 ```env
 DEBUG=False
-SECRET_KEY=GENERAR_UNA_CLAVE_NUEVA_AQUI
-ALLOWED_HOSTS=TU_IP_VPS,127.0.0.1,localhost
+SECRET_KEY=cj0pf5#$rj*u=yaplejfnrbi7233-i18fk%b&lx-a-48kbmmn6
+ALLOWED_HOSTS=161.97.181.140,127.0.0.1,localhost
 
 DB_ENGINE=django.db.backends.postgresql
 DB_NAME=certificados_cenefco
@@ -143,7 +141,14 @@ DB_USER=postgres
 DB_PASSWORD=5dv4rrgq8au7
 DB_HOST=127.0.0.1
 DB_PORT=5432
+
+CSRF_TRUSTED_ORIGINS=http://161.97.181.140:8001
 ```
+
+> **Recomendado usar `nano` en vez de `cat << 'EOF' > .env`** al pegar por
+> SSH: los heredocs con caracteres especiales (`$`, `&`, `#`) y pegado
+> multilinea por terminal suelen romperse o concatenar lineas mal. `nano`
+> es mas confiable para esto.
 
 Generar una `SECRET_KEY` nueva (no reusar la de desarrollo local):
 
@@ -152,44 +157,32 @@ source venv/bin/activate
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
 
-Copiar el resultado dentro del `.env` en `SECRET_KEY=`.
-
-> `DEBUG=False` es obligatorio en produccion -- evita que Django muestre
-> tracebacks con informacion sensible si algo falla.
+`CSRF_TRUSTED_ORIGINS` es **obligatorio** al acceder por IP:puerto sin
+HTTPS -- sin esto, Django 4+ devuelve `403 Forbidden / La verificacion
+CSRF ha fallado` en cualquier formulario (login incluido).
 
 ---
 
-## Paso 6 -- Migraciones, superusuario y archivos estaticos
+## Paso 6 -- Migraciones, superusuario, estaticos
 
 ```bash
-cd /root/certificados/app
+cd /srv/cenefco-certificados
 source venv/bin/activate
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py collectstatic --noinput
 ```
 
-`collectstatic` junta el CSS/JS de Django admin en una carpeta `staticfiles/`
-que Nginx servira directamente (Paso 8).
-
-Agregar a `config/settings.py` (si no existe ya) antes de correr
-`collectstatic`:
-
-```python
-STATIC_ROOT = BASE_DIR / "staticfiles"
-```
+(`STATIC_ROOT = BASE_DIR / "staticfiles"` ya esta en `config/settings.py`
+en el repo).
 
 ---
 
 ## Paso 7 -- Gunicorn + systemd
 
-Crear el archivo de servicio:
-
 ```bash
 nano /etc/systemd/system/certificados-gunicorn.service
 ```
-
-Contenido:
 
 ```ini
 [Unit]
@@ -199,11 +192,11 @@ After=network.target postgresql.service
 [Service]
 User=root
 Group=root
-WorkingDirectory=/root/certificados/app
-EnvironmentFile=/root/certificados/app/.env
-ExecStart=/root/certificados/app/venv/bin/gunicorn \
+WorkingDirectory=/srv/cenefco-certificados
+EnvironmentFile=/srv/cenefco-certificados/.env
+ExecStart=/srv/cenefco-certificados/venv/bin/gunicorn \
     --workers 3 \
-    --bind 127.0.0.1:8001 \
+    --bind 127.0.0.1:8002 \
     --timeout 120 \
     config.wsgi:application
 Restart=always
@@ -213,11 +206,9 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-> `--timeout 120` da margen para lotes grandes (cientos de certificados);
-> la generacion real corre en un hilo en segundo plano, asi que esto es
-> solo margen para la respuesta HTTP inicial.
-
-Activar y arrancar:
+> Gunicorn escucha en el puerto **8002** (interno, solo localhost).
+> Nginx expone el **8001** hacia afuera y reenvia a gunicorn -- no pueden
+> ser el mismo puerto.
 
 ```bash
 systemctl daemon-reload
@@ -226,27 +217,15 @@ systemctl start certificados-gunicorn
 systemctl status certificados-gunicorn --no-pager
 ```
 
-Ver logs en vivo si algo falla:
-
-```bash
-journalctl -u certificados-gunicorn -f
-```
+Logs en vivo si algo falla: `journalctl -u certificados-gunicorn -f`
 
 ---
 
-## Paso 8 -- Nginx como proxy (puerto 8001 externo)
-
-Gunicorn escucha en `127.0.0.1:8001` (solo localhost). Nginx escucha en
-`0.0.0.0:8001`... espera, **mismo puerto no puede usarse dos veces**. Ajuste:
-gunicorn escucha en un socket interno (`127.0.0.1:8002`) y Nginx expone el
-puerto **8001** hacia afuera. Corregir el `ExecStart` del Paso 7 a
-`--bind 127.0.0.1:8002` antes de continuar aqui.
+## Paso 8 -- Nginx (puerto 8001 publico)
 
 ```bash
 nano /etc/nginx/sites-available/certificados
 ```
-
-Contenido:
 
 ```nginx
 server {
@@ -256,11 +235,11 @@ server {
     client_max_body_size 25M;
 
     location /static/ {
-        alias /root/certificados/app/staticfiles/;
+        alias /srv/cenefco-certificados/staticfiles/;
     }
 
     location /media/ {
-        alias /root/certificados/app/media/;
+        alias /srv/cenefco-certificados/media/;
     }
 
     location / {
@@ -273,44 +252,34 @@ server {
 }
 ```
 
-Activar el sitio:
-
 ```bash
 ln -s /etc/nginx/sites-available/certificados /etc/nginx/sites-enabled/
 nginx -t
 systemctl reload nginx
-```
-
-Abrir el puerto en el firewall si usas `ufw`:
-
-```bash
 ufw allow 8001/tcp
 ```
 
-Acceder desde el navegador: `http://TU_IP_VPS:8001`
+Acceder desde el navegador: `http://161.97.181.140:8001`
 
 ---
 
 ## Paso 9 -- Cron para limpieza de certificados vencidos
 
-El script ya existe en `scripts/limpiar_certificados_vencidos.sh` (copiado
-junto con el proyecto en el Paso 3). Darle permisos y programarlo:
-
 ```bash
-chmod +x /root/certificados/app/scripts/limpiar_certificados_vencidos.sh
+chmod +x /srv/cenefco-certificados/scripts/limpiar_certificados_vencidos.sh
 crontab -e
 ```
 
-Agregar esta linea (corre todos los dias a las 3:00 am):
+Agregar (corre todos los dias a las 3:00 am):
 
 ```
-0 3 * * * /root/certificados/app/scripts/limpiar_certificados_vencidos.sh >> /var/log/cenefco_limpieza.log 2>&1
+0 3 * * * /srv/cenefco-certificados/scripts/limpiar_certificados_vencidos.sh >> /var/log/cenefco_limpieza.log 2>&1
 ```
 
-Probar manualmente que funciona antes de confiar en el cron:
+Probar manualmente antes de confiar en el cron:
 
 ```bash
-/root/certificados/app/scripts/limpiar_certificados_vencidos.sh
+/srv/cenefco-certificados/scripts/limpiar_certificados_vencidos.sh
 cat /var/log/cenefco_limpieza.log
 ```
 
@@ -318,40 +287,38 @@ cat /var/log/cenefco_limpieza.log
 
 ## Paso 10 -- Verificacion final
 
-- [ ] `http://TU_IP_VPS:8001/login/` carga la pantalla de login
-- [ ] Login con el superusuario creado en el Paso 6 funciona
+- [ ] `http://161.97.181.140:8001/login/` carga la pantalla de login
+- [ ] Login con el superusuario funciona (sin error 403 de CSRF)
+- [ ] Las imagenes de plantilla cargan en `/lotes/<id>/editar/` (si dan
+      403, revisar permisos de la ruta -- ver nota del Paso 0)
 - [ ] Crear un lote de prueba, generar certificados, descargar ZIP
-- [ ] `systemctl status certificados-gunicorn` esta `active (running)`
-- [ ] `systemctl status nginx` esta `active (running)`
-- [ ] Moodle (`:8080`) y NPM (`:80`/`:81`/`:443`) siguen funcionando igual que antes
+- [ ] `systemctl status certificados-gunicorn` -> `active (running)`
+- [ ] `systemctl status nginx` -> `active (running)`
+- [ ] Moodle (`:8080`) y NPM (`:80`/`:81`/`:443`) siguen funcionando igual
 
 ---
 
 ## Cuando tengas el dominio
 
-Cuando decidas el (sub)dominio para certificados, los pasos cambian asi:
+1. En **Nginx Proxy Manager** (UI en `:81`), agregar un Proxy Host nuevo
+   apuntando a `127.0.0.1:8001` con el dominio elegido, y activar SSL
+   (Let's Encrypt) ahi.
+2. Agregar el dominio a `ALLOWED_HOSTS` y a `CSRF_TRUSTED_ORIGINS`
+   (con `https://`) en el `.env`.
+3. `systemctl restart certificados-gunicorn`
 
-1. En **Nginx Proxy Manager** (la UI de NPM en `:81`), agregar un Proxy
-   Host nuevo apuntando a `127.0.0.1:8001` (el Nginx nativo de este
-   proyecto) con el dominio elegido, y activar SSL (Let's Encrypt) ahi.
-2. Actualizar `ALLOWED_HOSTS` en el `.env` del proyecto agregando el
-   dominio nuevo.
-3. Reiniciar: `systemctl restart certificados-gunicorn`.
-
-No hace falta tocar el Nginx nativo del proyecto ni gunicorn -- NPM
-simplemente reenvia trafico HTTPS del dominio hacia el puerto 8001 que ya
-esta funcionando.
+No hace falta tocar el Nginx nativo del proyecto -- NPM solo reenvia
+trafico HTTPS del dominio hacia el puerto 8001 que ya funciona.
 
 ---
 
 ## Mantenimiento futuro
 
-**Actualizar el codigo** (si se sube a Git, mas adelante):
+**Actualizar el codigo:**
 ```bash
-cd /root/certificados/app
-git pull
+cd /srv/cenefco-certificados
+git pull origin main
 source venv/bin/activate
-pip install -r requirements.txt   # si se agrega ese archivo
 python manage.py migrate
 python manage.py collectstatic --noinput
 systemctl restart certificados-gunicorn
@@ -369,5 +336,17 @@ pg_dump -h 127.0.0.1 -U postgres certificados_cenefco > backup_$(date +%Y%m%d).s
 
 **Backup de archivos generados (media/):**
 ```bash
-tar -czf media_backup_$(date +%Y%m%d).tar.gz /root/certificados/app/media
+tar -czf media_backup_$(date +%Y%m%d).tar.gz /srv/cenefco-certificados/media
 ```
+
+---
+
+## Seguridad pendiente
+
+- La contrasena de PostgreSQL (`5dv4rrgq8au7`) quedo expuesta en commits
+  viejos del historial de Git (ya corregido hacia adelante, pero visible
+  en el historial). **Cambiarla** despues de terminar el despliegue:
+  ```bash
+  sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'NUEVA_CLAVE';"
+  ```
+  y actualizar `DB_PASSWORD` en el `.env` + `systemctl restart certificados-gunicorn`.

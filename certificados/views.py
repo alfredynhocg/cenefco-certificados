@@ -95,7 +95,7 @@ def detalle_lote(request, pk):
 @login_required
 def eliminar_lote(request, pk):
     lote = get_object_or_404(Lote, pk=pk)
-    if not _puede_ver(request.user, lote):
+    if not request.user.es_admin:
         raise Http404
 
     if request.method == "POST":
