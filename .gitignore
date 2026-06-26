@@ -1,0 +1,33 @@
+# Entorno virtual
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Configuracion local / credenciales (nunca se versiona)
+.env
+
+# Base de datos local
+db.sqlite3
+db.sqlite3-journal
+
+# Archivos subidos por usuarios y certificados generados (datos reales,
+# no pertenecen al codigo fuente; cada entorno tiene los suyos)
+media/
+
+# Archivos estaticos recolectados (se generan con collectstatic)
+staticfiles/
+
+# Logs
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
