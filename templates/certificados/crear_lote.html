@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}{% if lote %}Editar lote{% else %}Nuevo lote{% endif %}{% endblock %}
+{% block extra_head %}
+<style>
+    .fuente-Helvetica, .fuente-Helvetica-Bold, .fuente-Helvetica-Oblique { font-family: Arial, Helvetica, sans-serif; }
+    .fuente-Helvetica-Bold { font-weight: 700; }
+    .fuente-Helvetica-Oblique { font-style: italic; }
+    .fuente-Times-Roman, .fuente-Times-Bold, .fuente-Times-Italic { font-family: 'Times New Roman', Times, serif; }
+    .fuente-Times-Bold { font-weight: 700; }
+    .fuente-Times-Italic { font-style: italic; }
+    .fuente-Courier, .fuente-Courier-Bold { font-family: 'Courier New', Courier, monospace; }
+    .fuente-Courier-Bold { font-weight: 700; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="mb-6">
+    {% if lote %}
+        <a href="{% url 'detalle_lote' lote.pk %}" class="text-sm text-slate-500 hover:text-slate-700">&larr; Volver al lote</a>
+        <h1 class="text-xl font-semibold text-slate-800 mt-2">Editar lote: {{ lote.curso }}</h1>
+        <p class="text-sm text-slate-500">Ajusta la posicion, el estilo o reemplaza los archivos del lote.</p>
+    {% else %}
+        <a href="{% url 'dashboard' %}" class="text-sm text-slate-500 hover:text-slate-700">&larr; Volver a mis lotes</a>
+        <h1 class="text-xl font-semibold text-slate-800 mt-2">Nuevo lote de certificados</h1>
+        <p class="text-sm text-slate-500">Sube tu Excel y tu plantilla, luego arrastra el nombre de ejemplo hasta el lugar exacto del certificado.</p>
+    {% endif %}
+</div>
+
+<form method="post" enctype="multipart/form-data" id="form-lote">
+    {% csrf_token %}
+    <div class="grid lg:grid-cols-[1fr_340px] gap-6">
+
+        <div class="space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <div id="paso-archivos" class="grid sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="{{ form.curso.id_for_label }}" class="block text-sm font-medium text-slate-700 mb-1">{{ form.curso.label }}</label>
+                        {{ form.curso }}
+                        {% if form.curso.errors %}<p class="text-xs text-red-600 mt-1">{% for e in form.curso.errors %}{{ e }}{% endfor %}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label for="{{ form.excel.id_for_label }}" class="block text-sm font-medium text-slate-700 mb-1">Excel con nombres (.xlsx)</label>
+                        {{ form.excel }}
+                        {% if lote %}<p class="text-xs text-slate-400 mt-1">Actual: {{ lote.excel.name|slice:"-40:" }}. Sube uno nuevo para reemplazarlo.</p>{% endif %}
+                        {% if form.excel.errors %}<p class="text-xs text-red-600 mt-1">{% for e in form.excel.errors %}{{ e }}{% endfor %}</p>{% endif %}
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <label for="{{ form.plantilla.id_for_label }}" class="block text-sm font-medium text-slate-700 mb-1">Plantilla del certificado (imagen)</label>
+                    {{ form.plantilla }}
+                    {% if lote %}<p class="text-xs text-slate-400 mt-1">Sube una imagen nueva solo si quieres reemplazar la plantilla actual.</p>
+                    {% else %}<p class="text-xs text-slate-400 mt-1">Formatos PNG o JPG. Es la imagen sobre la que se va a colocar cada nombre.</p>{% endif %}
+                    {% if form.plantilla.errors %}<p class="text-xs text-red-600 mt-1">{% for e in form.plantilla.errors %}{{ e }}{% endfor %}</p>{% endif %}
+                </div>
+            </div>
+
+            <div id="editor-wrapper" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 {% if not lote %}hidden{% endif %}">
+                <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-medium text-slate-700">Arrastra el nombre hasta su lugar</p>
+                    <span id="coords-texto" class="text-xs text-slate-400">sin posicion</span>
+                </div>
+                <div id="lienzo" class="relative inline-block w-full select-none rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                    <img id="preview-img" class="w-full h-auto block pointer-events-none" draggable="false" {% if lote %}src="{{ lote.plantilla.url }}"{% endif %}>
+
+                    <div id="guia-izq" class="absolute top-0 h-full w-0.5 bg-sky-400/70 cursor-ew-resize" title="Margen izquierdo">
+                        <div class="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow"></div>
+                    </div>
+                    <div id="guia-der" class="absolute top-0 h-full w-0.5 bg-sky-400/70 cursor-ew-resize" title="Margen derecho">
+                        <div class="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow"></div>
+                    </div>
+
+                    <div id="caja-texto" class="absolute cursor-move px-2 py-1 rounded border-2 border-dashed border-brand-500/70 bg-white/40"
+                         style="left:50%; top:50%; transform: translate(-50%, -50%); white-space: nowrap;">
+                        <span id="texto-muestra" class="fuente-Helvetica-Bold" style="font-size:24px; color:#1a1a1a;">Nombre de Ejemplo</span>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400 mt-2">Las lineas azules marcan el ancho disponible para el nombre (margenes). Arrastralas para ajustarlas.</p>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <p class="text-sm font-medium text-slate-700 mb-3">Estilo del texto</p>
+
+                <label for="{{ form.fuente.id_for_label }}" class="block text-xs font-medium text-slate-600 mb-1">Fuente</label>
+                {{ form.fuente }}
+
+                <label for="{{ form.tamano_fuente.id_for_label }}" class="block text-xs font-medium text-slate-600 mt-3 mb-1">
+                    Tamano maximo: <span id="valor-tamano">{{ form.tamano_fuente.value|default:40 }}</span>px
+                </label>
+                {{ form.tamano_fuente }}
+
+                <label for="{{ form.tamano_fuente_min.id_for_label }}" class="block text-xs font-medium text-slate-600 mt-3 mb-1">
+                    Tamano minimo (si el nombre es largo): <span id="valor-tamano-min">{{ form.tamano_fuente_min.value|default:18 }}</span>px
+                </label>
+                {{ form.tamano_fuente_min }}
+
+                <label for="{{ form.color_texto.id_for_label }}" class="block text-xs font-medium text-slate-600 mt-3 mb-1">Color</label>
+                {{ form.color_texto }}
+            </div>
+
+            <div class="bg-brand-50 border border-brand-100 rounded-2xl p-4 text-sm text-brand-700">
+                <p class="font-medium mb-1">Como funciona</p>
+                <ol class="list-decimal list-inside space-y-1 text-brand-700/90">
+                    <li>Sube tu Excel y tu plantilla.</li>
+                    <li>Arrastra el recuadro punteado hasta donde debe ir el nombre.</li>
+                    <li>Ajusta fuente, tamano y color a la izquierda; veras el cambio al instante.</li>
+                    <li>Guarda el lote y genera los certificados.</li>
+                </ol>
+            </div>
+
+            {{ form.texto_x }}
+            {{ form.texto_y }}
+            {{ form.margen_izquierdo }}
+            {{ form.margen_derecho }}
+
+            <button type="submit" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-medium text-sm rounded-lg py-2.5 transition shadow-sm">
+                {% if lote %}Guardar cambios{% else %}Guardar lote{% endif %}
+            </button>
+        </div>
+    </div>
+</form>
+
+<script>
+(function () {
+    const inputPlantilla = document.getElementById('{{ form.plantilla.id_for_label }}');
+    const editorWrapper = document.getElementById('editor-wrapper');
+    const previewImg = document.getElementById('preview-img');
+    const cajaTexto = document.getElementById('caja-texto');
+    const textoMuestra = document.getElementById('texto-muestra');
+    const guiaIzq = document.getElementById('guia-izq');
+    const guiaDer = document.getElementById('guia-der');
+    const coordsTexto = document.getElementById('coords-texto');
+
+    const inputX = document.getElementById('{{ form.texto_x.id_for_label }}');
+    const inputY = document.getElementById('{{ form.texto_y.id_for_label }}');
+    const inputMargenIzq = document.getElementById('{{ form.margen_izquierdo.id_for_label }}');
+    const inputMargenDer = document.getElementById('{{ form.margen_derecho.id_for_label }}');
+    const inputFuente = document.getElementById('{{ form.fuente.id_for_label }}');
+    const inputTamano = document.getElementById('{{ form.tamano_fuente.id_for_label }}');
+    const inputTamanoMin = document.getElementById('{{ form.tamano_fuente_min.id_for_label }}');
+    const inputColor = document.getElementById('{{ form.color_texto.id_for_label }}');
+    const valorTamano = document.getElementById('valor-tamano');
+    const valorTamanoMin = document.getElementById('valor-tamano-min');
+
+    const valoresGuardados = {
+        existe: {{ lote|yesno:"true,false" }},
+        x: {{ lote.texto_x|default:"null" }},
+        y: {{ lote.texto_y|default:"null" }},
+        margenIzq: {{ lote.margen_izquierdo|default:"null" }},
+        margenDer: {{ lote.margen_derecho|default:"null" }},
+    };
+
+    let imgNaturalW = 0;
+    let imgNaturalH = 0;
+    let posXReal = null;
+    let posYReal = null;
+    let margenIzqReal = null;
+    let margenDerReal = null;
+
+    function escala() {
+        const rect = previewImg.getBoundingClientRect();
+        return { sx: rect.width / imgNaturalW, sy: rect.height / imgNaturalH, rect };
+    }
+
+    function actualizarMuestra() {
+        textoMuestra.className = 'fuente-' + inputFuente.value;
+        textoMuestra.style.fontSize = inputTamano.value + 'px';
+        textoMuestra.style.color = inputColor.value;
+    }
+
+    function actualizarPosicionesVisuales() {
+        if (!imgNaturalW) return;
+        const { sx, sy } = escala();
+        cajaTexto.style.left = (posXReal * sx) + 'px';
+        cajaTexto.style.top = (posYReal * sy) + 'px';
+        cajaTexto.style.transform = 'translate(-50%, -50%)';
+        guiaIzq.style.left = (margenIzqReal * sx) + 'px';
+        guiaDer.style.left = (margenDerReal * sx) + 'px';
+        coordsTexto.textContent = `x=${Math.round(posXReal)}px, y=${Math.round(posYReal)}px`;
+        inputX.value = Math.round(posXReal);
+        inputY.value = Math.round(posYReal);
+        inputMargenIzq.value = Math.round(margenIzqReal);
+        inputMargenDer.value = Math.round(imgNaturalW - margenDerReal);
+    }
+
+    function inicializarConImagenCargada(usarValoresGuardados) {
+        imgNaturalW = previewImg.naturalWidth;
+        imgNaturalH = previewImg.naturalHeight;
+        if (usarValoresGuardados && valoresGuardados.existe) {
+            posXReal = valoresGuardados.x;
+            posYReal = valoresGuardados.y;
+            margenIzqReal = valoresGuardados.margenIzq;
+            margenDerReal = imgNaturalW - valoresGuardados.margenDer;
+        } else {
+            posXReal = imgNaturalW / 2;
+            posYReal = imgNaturalH * 0.3;
+            margenIzqReal = imgNaturalW * 0.1;
+            margenDerReal = imgNaturalW * 0.9;
+        }
+        editorWrapper.classList.remove('hidden');
+        actualizarMuestra();
+        requestAnimationFrame(actualizarPosicionesVisuales);
+    }
+
+    if (valoresGuardados.existe && previewImg.getAttribute('src')) {
+        if (previewImg.complete && previewImg.naturalWidth) {
+            inicializarConImagenCargada(true);
+        } else {
+            previewImg.onload = () => inicializarConImagenCargada(true);
+        }
+    }
+
+    inputPlantilla.addEventListener('change', function () {
+        const archivo = this.files[0];
+        if (!archivo) {
+            if (!valoresGuardados.existe) editorWrapper.classList.add('hidden');
+            return;
+        }
+        const url = URL.createObjectURL(archivo);
+        previewImg.onload = () => inicializarConImagenCargada(false);
+        previewImg.src = url;
+    });
+
+    [inputFuente, inputColor].forEach(el => el.addEventListener('input', actualizarMuestra));
+    inputTamano.addEventListener('input', function () {
+        valorTamano.textContent = this.value;
+        actualizarMuestra();
+    });
+    inputTamanoMin.addEventListener('input', function () {
+        valorTamanoMin.textContent = this.value;
+    });
+
+    window.addEventListener('resize', actualizarPosicionesVisuales);
+
+    function arrastrar(elemento, mover) {
+        let activo = false;
+        const onMove = (evento) => {
+            if (!activo) return;
+            const punto = evento.touches ? evento.touches[0] : evento;
+            mover(punto);
+            evento.preventDefault();
+        };
+        const onUp = () => { activo = false; };
+        elemento.addEventListener('mousedown', (e) => { activo = true; e.preventDefault(); });
+        elemento.addEventListener('touchstart', (e) => { activo = true; }, { passive: true });
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('touchend', onUp);
+    }
+
+    arrastrar(cajaTexto, (punto) => {
+        const { sx, sy, rect } = escala();
+        let x = (punto.clientX - rect.left) / sx;
+        let y = (punto.clientY - rect.top) / sy;
+        x = Math.max(0, Math.min(imgNaturalW, x));
+        y = Math.max(0, Math.min(imgNaturalH, y));
+        posXReal = x;
+        posYReal = y;
+        actualizarPosicionesVisuales();
+    });
+
+    arrastrar(guiaIzq, (punto) => {
+        const { sx, rect } = escala();
+        let x = (punto.clientX - rect.left) / sx;
+        margenIzqReal = Math.max(0, Math.min(x, margenDerReal - 10));
+        actualizarPosicionesVisuales();
+    });
+
+    arrastrar(guiaDer, (punto) => {
+        const { sx, rect } = escala();
+        let x = (punto.clientX - rect.left) / sx;
+        margenDerReal = Math.max(margenIzqReal + 10, Math.min(imgNaturalW, x));
+        actualizarPosicionesVisuales();
+    });
+
+    document.getElementById('form-lote').addEventListener('submit', function (evento) {
+        if (!inputX.value || !inputY.value) {
+            evento.preventDefault();
+            alert('Sube la plantilla y arrastra el nombre de ejemplo a su posicion antes de guardar.');
+        }
+    });
+})();
+</script>
+{% endblock %}

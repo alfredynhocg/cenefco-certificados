@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ lote.curso }}{% endblock %}
+{% block content %}
+<div class="mb-6">
+    <a href="{% url 'dashboard' %}" class="text-sm text-slate-500 hover:text-slate-700">&larr; Volver a mis lotes</a>
+</div>
+
+<div class="grid lg:grid-cols-[1fr_340px] gap-6">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-medium text-slate-700">Vista previa</p>
+            <span class="text-xs text-slate-400">Asi se vera cada certificado generado</span>
+        </div>
+        <img src="{% url 'previsualizar_lote' lote.pk %}" alt="{{ lote.curso }}" class="w-full h-auto rounded-lg border border-slate-200">
+    </div>
+
+    <div class="space-y-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <h1 class="text-lg font-semibold text-slate-800">{{ lote.curso }}</h1>
+            <span id="badge-estado" class="badge mt-2
+                {% if lote.estado == 'generado' %}bg-emerald-50 text-emerald-700
+                {% elif lote.estado == 'procesando' %}bg-amber-50 text-amber-700
+                {% elif lote.estado == 'error' %}bg-red-50 text-red-700
+                {% else %}bg-slate-100 text-slate-600{% endif %}">
+                {{ lote.get_estado_display }}
+            </span>
+
+            <div id="bloque-progreso" class="mt-4 {% if lote.estado != 'procesando' %}hidden{% endif %}">
+                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>Generando certificados...</span>
+                    <span id="texto-progreso">{{ lote.procesados }} / {{ lote.total_certificados }}</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    <div id="barra-progreso" class="bg-brand-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="bloque-error" class="mt-4 {% if lote.estado != 'error' %}hidden{% endif %}">
+                <p class="text-sm text-red-600" id="texto-error">{{ lote.mensaje_error }}</p>
+            </div>
+
+            <p id="texto-completado" class="text-sm text-slate-500 mt-4 {% if lote.estado != 'generado' %}hidden{% endif %}">
+                <span id="total-generados">{{ lote.total_certificados }}</span> certificados listos.
+            </p>
+
+            {% if lote.archivos_expirados %}
+            <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600">
+                Los archivos de esta generacion se borraron automaticamente por antiguedad (mas de 1 mes).
+                El registro y la lista de estudiantes se conservan. Genera de nuevo si necesitas los PDF.
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-3">
+            <form method="post" action="{% url 'generar_lote' lote.pk %}" id="form-generar">
+                {% csrf_token %}
+                <button type="submit" id="btn-generar"
+                        class="w-full inline-flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white font-medium text-sm rounded-lg py-2.5 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        {% if lote.estado == 'procesando' %}disabled{% endif %}>
+                    <svg id="icono-generar" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                    <span id="texto-btn-generar">{% if lote.estado == 'generado' %}Regenerar certificados{% else %}Generar certificados{% endif %}</span>
+                </button>
+            </form>
+
+            <a id="btn-descargar" href="{% url 'descargar_zip' lote.pk %}"
+               class="w-full inline-flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white font-medium text-sm rounded-lg py-2.5 transition {% if not lote.zip_resultado %}hidden{% endif %}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                Descargar ZIP
+            </a>
+
+            <a href="{% url 'lista_estudiantes' lote.pk %}"
+               class="w-full inline-flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-lg py-2.5 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+                Ver lista de estudiantes
+            </a>
+
+            <a href="{% url 'editar_lote' lote.pk %}"
+               class="w-full inline-flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-lg py-2.5 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+                Editar parametros
+            </a>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <p class="text-sm font-medium text-slate-700 mb-3">Registro de actividad</p>
+            <dl class="space-y-2 text-sm">
+                <div class="flex justify-between gap-2">
+                    <dt class="text-slate-500">Creado por</dt>
+                    <dd class="text-slate-800 font-medium text-right">{{ lote.propietario.username }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-slate-500">Creado el</dt>
+                    <dd class="text-slate-800 text-right">{{ lote.creado_en|date:"d/m/Y H:i" }}</dd>
+                </div>
+                {% if lote.generado_por %}
+                <div class="flex justify-between gap-2 pt-2 border-t border-slate-100">
+                    <dt class="text-slate-500">Ultima generacion por</dt>
+                    <dd class="text-slate-800 font-medium text-right">{{ lote.generado_por.username }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-slate-500">Generado el</dt>
+                    <dd class="text-slate-800 text-right">{{ lote.generado_en|date:"d/m/Y H:i" }}</dd>
+                </div>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const estadoInicial = "{{ lote.estado }}";
+    let intervalo = null;
+
+    const badgeEstado = document.getElementById('badge-estado');
+    const bloqueProgreso = document.getElementById('bloque-progreso');
+    const bloqueError = document.getElementById('bloque-error');
+    const textoError = document.getElementById('texto-error');
+    const textoProgreso = document.getElementById('texto-progreso');
+    const barraProgreso = document.getElementById('barra-progreso');
+    const textoCompletado = document.getElementById('texto-completado');
+    const totalGenerados = document.getElementById('total-generados');
+    const btnGenerar = document.getElementById('btn-generar');
+    const textoBtnGenerar = document.getElementById('texto-btn-generar');
+    const iconoGenerar = document.getElementById('icono-generar');
+    const btnDescargar = document.getElementById('btn-descargar');
+
+    const ESTILOS_BADGE = {
+        generado: 'badge mt-2 bg-emerald-50 text-emerald-700',
+        procesando: 'badge mt-2 bg-amber-50 text-amber-700',
+        error: 'badge mt-2 bg-red-50 text-red-700',
+        borrador: 'badge mt-2 bg-slate-100 text-slate-600',
+    };
+    const ETIQUETAS_ESTADO = {
+        generado: 'Generado', procesando: 'Procesando', error: 'Error', borrador: 'Borrador',
+    };
+
+    function aplicarEstado(data) {
+        badgeEstado.className = ESTILOS_BADGE[data.estado] || ESTILOS_BADGE.borrador;
+        badgeEstado.textContent = ETIQUETAS_ESTADO[data.estado] || data.estado;
+
+        if (data.estado === 'procesando') {
+            bloqueProgreso.classList.remove('hidden');
+            bloqueError.classList.add('hidden');
+            textoCompletado.classList.add('hidden');
+            const pct = data.total ? Math.round((data.procesados / data.total) * 100) : 0;
+            barraProgreso.style.width = pct + '%';
+            textoProgreso.textContent = `${data.procesados} / ${data.total}`;
+            btnGenerar.disabled = true;
+            iconoGenerar.classList.add('animate-spin');
+            textoBtnGenerar.textContent = 'Generando...';
+        } else {
+            iconoGenerar.classList.remove('animate-spin');
+            btnGenerar.disabled = false;
+            bloqueProgreso.classList.add('hidden');
+            if (data.estado === 'error') {
+                bloqueError.classList.remove('hidden');
+                textoError.textContent = data.mensaje_error;
+                textoBtnGenerar.textContent = 'Reintentar generacion';
+            } else if (data.estado === 'generado') {
+                textoCompletado.classList.remove('hidden');
+                totalGenerados.textContent = data.total;
+                textoBtnGenerar.textContent = 'Regenerar certificados';
+            } else {
+                textoBtnGenerar.textContent = 'Generar certificados';
+            }
+            if (data.tiene_zip) {
+                btnDescargar.classList.remove('hidden');
+            }
+        }
+    }
+
+    function notificarFin(data) {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        const titulo = data.estado === 'generado' ? 'Certificados listos' : 'Error al generar certificados';
+        const cuerpo = data.estado === 'generado'
+            ? `Se generaron ${data.total} certificados para "{{ lote.curso|escapejs }}".`
+            : `Hubo un problema generando "{{ lote.curso|escapejs }}".`;
+        const notif = new Notification(titulo, { body: cuerpo });
+        notif.onclick = () => window.focus();
+    }
+
+    function consultarProgreso() {
+        fetch("{% url 'progreso_lote' lote.pk %}")
+            .then(r => r.json())
+            .then(data => {
+                const estabaProcesando = badgeEstado.textContent.trim() === 'Procesando';
+                aplicarEstado(data);
+                if (data.estado !== 'procesando' && intervalo) {
+                    clearInterval(intervalo);
+                    intervalo = null;
+                    if (estabaProcesando) notificarFin(data);
+                }
+            });
+    }
+
+    document.getElementById('form-generar').addEventListener('submit', function () {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        btnGenerar.disabled = true;
+        iconoGenerar.classList.add('animate-spin');
+        textoBtnGenerar.textContent = 'Generando...';
+        bloqueProgreso.classList.remove('hidden');
+        bloqueError.classList.add('hidden');
+        textoCompletado.classList.add('hidden');
+        barraProgreso.style.width = '0%';
+        intervalo = setInterval(consultarProgreso, 1000);
+    });
+
+    if (estadoInicial === 'procesando') {
+        intervalo = setInterval(consultarProgreso, 1000);
+        consultarProgreso();
+    }
+})();
+</script>
+{% endblock %}

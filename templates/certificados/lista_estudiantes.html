@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Lista de estudiantes - {{ lote.curso }}{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+        <a href="{% url 'detalle_lote' lote.pk %}" class="text-sm text-slate-500 hover:text-slate-700">&larr; Volver al lote</a>
+        <h1 class="text-xl font-semibold text-slate-800 mt-2">Lista de estudiantes</h1>
+        <p class="text-sm text-slate-500">Nombres leidos de tu Excel para "{{ lote.curso }}". Revisa que esten correctos antes de generar.</p>
+    </div>
+    {% if analisis %}
+    <a href="{% url 'exportar_reporte' lote.pk %}" class="inline-flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm px-4 py-2.5 rounded-lg shadow-sm transition shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+        Exportar reporte a Excel
+    </a>
+    {% endif %}
+</div>
+
+{% if analisis %}
+<div class="grid sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <p class="text-2xl font-semibold text-slate-800">{{ analisis.total_filas_con_datos }}</p>
+        <p class="text-xs text-slate-500">Filas con datos en el Excel</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <p class="text-2xl font-semibold text-emerald-600">{{ analisis.total_nombres_validos }}</p>
+        <p class="text-xs text-slate-500">Certificados que se generarian</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <p class="text-2xl font-semibold {% if analisis.filas_con_advertencias %}text-amber-600{% else %}text-slate-400{% endif %}">
+            {{ analisis.filas_con_advertencias|length }}
+        </p>
+        <p class="text-xs text-slate-500">Filas con advertencias</p>
+    </div>
+</div>
+
+{% if analisis.filas_con_advertencias %}
+<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6">
+    <p class="text-sm font-medium text-amber-800 mb-1">Se encontraron filas que conviene revisar en tu Excel</p>
+    <p class="text-sm text-amber-700">Estas filas se muestran resaltadas abajo. No impiden generar los certificados, pero podrian producir nombres incorrectos o vacios.</p>
+</div>
+{% endif %}
+
+<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+            <tr>
+                <th class="text-left px-5 py-3 font-medium w-20">Fila</th>
+                <th class="text-left px-5 py-3 font-medium">Valor original en el Excel</th>
+                <th class="text-left px-5 py-3 font-medium">Nombre que se usara</th>
+                <th class="text-left px-5 py-3 font-medium">Advertencias</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+            {% for item in analisis.filas %}
+            <tr class="{% if item.advertencias %}bg-amber-50/60{% endif %}">
+                <td class="px-5 py-3 text-slate-400">{{ item.fila }}</td>
+                <td class="px-5 py-3 text-slate-500">{{ item.valor_original|default:"—" }}</td>
+                <td class="px-5 py-3 {% if item.nombre %}text-slate-800 font-medium{% else %}text-red-500 italic{% endif %}">
+                    {{ item.nombre|default:"(vacio, no genera certificado)" }}
+                </td>
+                <td class="px-5 py-3">
+                    {% for advertencia in item.advertencias %}
+                        <span class="badge bg-amber-100 text-amber-800 mb-1">{{ advertencia }}</span>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="px-5 py-8 text-center text-slate-400">El Excel no tiene filas con datos.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="bg-white rounded-2xl shadow-sm border border-dashed border-slate-300 p-12 text-center">
+    <p class="text-slate-500">No se pudo leer el archivo Excel de este lote.</p>
+</div>
+{% endif %}
+{% endblock %}

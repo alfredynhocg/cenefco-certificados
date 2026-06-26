@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Certificados CENEFCO{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eafaf2',
+                            100: '#cdf0e0',
+                            500: '#0d5c3a',
+                            600: '#0a4a2f',
+                            700: '#083b26',
+                        },
+                    },
+                },
+            },
+        };
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="h-full min-h-screen flex flex-col">
+    <nav class="bg-brand-600 text-white shadow-md">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+            <a href="{% url 'dashboard' %}" class="flex items-center gap-2 font-semibold text-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                CENEFCO · Certificados
+            </a>
+            <div class="flex items-center gap-1 text-sm">
+                {% if user.is_authenticated %}
+                    <a href="{% url 'dashboard' %}" class="px-3 py-2 rounded-md hover:bg-brand-500 transition">Mis lotes</a>
+                    {% if user.es_admin %}<a href="{% url 'lista_usuarios' %}" class="px-3 py-2 rounded-md hover:bg-brand-500 transition">Usuarios</a>{% endif %}
+                    <span class="px-3 py-2 text-brand-100 hidden sm:inline">{{ user.username }}</span>
+                    <a href="{% url 'logout' %}" class="px-3 py-2 rounded-md bg-brand-700 hover:bg-brand-500 transition">Salir</a>
+                {% else %}
+                    <a href="{% url 'login' %}" class="px-3 py-2 rounded-md bg-brand-700 hover:bg-brand-500 transition">Ingresar</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
+        {% if messages %}
+        <div class="space-y-2 mb-6">
+            {% for message in messages %}
+            <div class="rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2
+                {% if message.tags == 'success' %} bg-emerald-50 text-emerald-700 border border-emerald-200
+                {% elif message.tags == 'error' %} bg-red-50 text-red-700 border border-red-200
+                {% else %} bg-slate-100 text-slate-700 border border-slate-200{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-4">
+        CENEFCO &middot; Generador de certificados
+    </footer>
+</body>
+</html>

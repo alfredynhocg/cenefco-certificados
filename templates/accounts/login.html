@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Ingresar{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto mt-10">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+        <div class="text-center mb-6">
+            <div class="mx-auto h-12 w-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 11-12 0 6 6 0 0112 0zM2.25 18.75a8.967 8.967 0 0115 0" />
+                </svg>
+            </div>
+            <h1 class="text-lg font-semibold text-slate-800">Ingresar</h1>
+            <p class="text-sm text-slate-500">Generador de certificados CENEFCO</p>
+        </div>
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            {% for field in form %}
+                <div>
+                    <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-slate-700 mb-1">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}
+                        <p class="text-xs text-red-600 mt-1">{% for e in field.errors %}{{ e }}{% endfor %}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            {% if form.non_field_errors %}
+                <p class="text-xs text-red-600">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</p>
+            {% endif %}
+            <button type="submit" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-medium text-sm rounded-lg py-2.5 transition">
+                Ingresar
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
